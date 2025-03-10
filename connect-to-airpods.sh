@@ -1,5 +1,8 @@
 #!/usr/bin/bash
 
+# get path of this script
+SCRIPT_PATH=$(dirname "$(realpath "$0")")
+
 connect_to_airpods() {
   device_mac=$(bluetoothctl devices | grep "AirPods" | awk '{print $2}')
 
@@ -9,9 +12,12 @@ connect_to_airpods() {
     return 1
   fi
 
-  # Disconnect from the device
-  echo "Disconnecting from 'AirPods' ($device_mac)..."
-  bluetoothctl disconnect "$device_mac"
+  # Check if already connected
+  connected=$(bluetoothctl info "$device_mac" | grep "Connected: yes")
+  if [ -n "$connected" ]; then
+    echo "'AirPods' ($device_mac) are already connected."
+    return 0
+  fi
 
   # Connect to the device
   echo "Connecting to 'AirPods' ($device_mac)..."
@@ -24,10 +30,28 @@ for attempt in 1 2; do
   connect_to_airpods
   if [ $? -eq 0 ]; then
     echo "Successfully connected to 'AirPods'."
-    exit 0
+
+    # wait till the connection is established
+    timeout=10
+    while [ -z "$(bluetoothctl info | grep "Connected: yes")" ]; do
+      sleep 1
+      timeout=$((timeout - 1))
+      if [ $timeout -eq 0 ]; then
+        echo "Failed to establish connection to 'AirPods'."
+        break
+      fi
+    done
+
+    # if timeout is not reached, run switch-to-airpods.sh
+    if [ $timeout -gt 0 ]; then
+      sleep 1
+      echo "Running switch-to-airpods.sh..."
+      "$SCRIPT_PATH/switch-to-airpods.sh"
+      exit 0
+    fi
   fi
   echo "Failed to connect. Retrying in 5 seconds..."
-  sleep 1
+  sleep 5
 done
 
 echo "Failed to connect to 'AirPods' after multiple attempts."
